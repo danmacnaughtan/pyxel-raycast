@@ -5,10 +5,10 @@
 A basic raycast example using the [Pyxel](https://github.com/kitao/pyxel) retro game engine. The project started as an experiement porting the [OneLoneCoder CommandLineFPS](https://github.com/OneLoneCoder/CommandLineFPS) (see [video tutorial here](https://www.youtube.com/watch?v=xW8skO7MFYw)) to Python and Pyxel, but went a bit farther with some dithering and mouse camera control (including "vertical" looking).
 
 A resolution of 240x136 and framerate of a whopping 30fps was achieved using two techniques:
-1. Interleave rendering (alternating drawing even and odd columns)
+1. Interleave rendering (alternate drawing even and odd columns)
 2. Using one of Pyxel's image banks as a display buffer so the scene can be rendered with a single draw command (and incidently overcoming Pyxel's internally imposed draw count limit `DRAW_MAX_COUNT = 10000`)
 
-I learned some additional tips, specifically "vertical" look, from https://permadi.com/1996/05/ray-casting-tutorial-1/
+Some additional tips, specifically "vertical" look, can be found here https://permadi.com/1996/05/ray-casting-tutorial-1/
 
 ### Requirements
 
