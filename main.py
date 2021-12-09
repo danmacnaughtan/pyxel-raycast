@@ -1,7 +1,8 @@
 import math
 
-import glfw
+from ctypes import CFUNCTYPE, POINTER, c_int32, c_uint32, pointer
 import pyxel
+from pyxel.core import _lib
 
 
 INTERLEAVE_RENDERING = True
@@ -11,6 +12,8 @@ SCREEN_HEIGHT = 136
 
 MAP_WIDTH = 16
 MAP_HEIGHT = 16
+
+MOUSE_SPEED = 4
 
 
 MAP_1 = """
@@ -33,15 +36,33 @@ MAP_1 = """
 """
 
 
+# ------------[ Exposing some C functions (SDL2) from Pyxel core ]-------------
+
+# Pyxel doesn't provide a way to track arbitrary mouse movement, but we can
+# access the C API to the underlying SDL2 framework and start using some
+# relative mouse functions...
+
+
+def _setup_api(name, restype, argtypes):
+    api = globals()[name] = getattr(_lib, name)
+    api.argtypes = argtypes
+    api.restype = restype
+
+
+_setup_api("SDL_SetRelativeMouseMode", c_int32, [c_int32])
+_setup_api("SDL_GetRelativeMouseState", c_uint32, [POINTER(c_int32), POINTER(c_int32)])
+
+# -----------------------------------------------------------------------------
+
+
 class Game:
     def __init__(self):
         pyxel.init(
             SCREEN_WIDTH,
             SCREEN_HEIGHT,
-            caption='Raycasting in progress...',
+            caption="Raycasting in progress...",
             scale=4,
         )
-        # pyxel.load('assets.pyxel')
 
         # Track the initial application setup
         self.has_setup = False
@@ -56,7 +77,7 @@ class Game:
         # Walking speed
         self.speed = 0.2
         # Load the world map
-        self.world_map = MAP_1[1:-1].split('\n')
+        self.world_map = MAP_1[1:-1].split("\n")
 
         self.tp1 = pyxel.frame_count
         self.tp2 = pyxel.frame_count
@@ -78,10 +99,6 @@ class Game:
         First time additional setup that needs to run after the app has been
         initialized.
         """
-        # Pyxel doesn't provide a way to track any arbitrary mouse movement,
-        # so we can add an additional cursor callback method for tracking
-        # additional mouse movement
-        glfw.set_cursor_pos_callback(self.window, self.mouse_callback)
         # We will start the game with the mouse captured
         self.capture_mouse()
         # Setup complete
@@ -127,16 +144,16 @@ class Game:
 
         if self.mouse_captured:
             if self.mouse_vec[0] != 0:
-                self.player_a += self.mouse_vec[0]/100 * ellapsed_time
+                self.player_a += self.mouse_vec[0] / 100 * ellapsed_time
                 self.mouse_vec[0] = 0
             if self.mouse_vec[1] != 0:
                 self.v_look -= self.mouse_vec[1] * ellapsed_time
                 self.mouse_vec[1] = 0
 
         if pyxel.btnp(pyxel.KEY_P):
-            print(f'x: {self.player_x}, ', end='')
-            print(f'y: {self.player_y}, ', end='')
-            print(f'a: {self.player_a}')
+            print(f"x: {self.player_x}, ", end="")
+            print(f"y: {self.player_y}, ", end="")
+            print(f"a: {self.player_a}")
 
         if pyxel.btn(pyxel.KEY_1):
             self.fov += 0.01
@@ -170,6 +187,9 @@ class Game:
         if pyxel.btnp(pyxel.KEY_M):
             self.show_map = not self.show_map
 
+        if self.mouse_captured:
+            self.update_mouse_pos()
+
     def draw(self):
         if self.interleave:
             inc = 2
@@ -184,8 +204,7 @@ class Game:
 
         for x in range(start, SCREEN_WIDTH, inc):
             # For each column, calculate the projected ray angle into world space
-            ray_angle = (self.player_a - self.fov / 2) \
-                    + (x / SCREEN_WIDTH) * self.fov
+            ray_angle = (self.player_a - self.fov / 2) + (x / SCREEN_WIDTH) * self.fov
 
             dist_to_wall = 0
             hit_wall = False
@@ -201,14 +220,18 @@ class Game:
                 test_y = int(self.player_y + eye_y * dist_to_wall)
 
                 # Test if ray is out of bounds
-                if test_x < 0 or test_x >= MAP_WIDTH \
-                   or test_y < 0 or test_y >= MAP_HEIGHT:
+                if (
+                    test_x < 0
+                    or test_x >= MAP_WIDTH
+                    or test_y < 0
+                    or test_y >= MAP_HEIGHT
+                ):
                     hit_wall = True
                     dist_to_wall = self.depth
                 else:
                     # Ray is inbounds so test to see if the ray cell is a wall
                     # block
-                    if self.world_map[test_y][test_x] == '#':
+                    if self.world_map[test_y][test_x] == "#":
                         hit_wall = True
                         # Cast rays from each corner of the wall to find the
                         # boundaries
@@ -217,16 +240,16 @@ class Game:
                             for ty in range(2):
                                 vy = test_y + ty - self.player_y
                                 vx = test_x + tx - self.player_x
-                                d = math.sqrt(vx*vx + vy*vy)
+                                d = math.sqrt(vx * vx + vy * vy)
                                 dot = (eye_x * vx / d) + (eye_y * vy / d)
                                 p.append((d, dot))
                         # Sort the pairs to find the closest
                         p.sort()
                         # Looking for very small angles with closest corners
                         bound = 0.01
-                        if (math.acos(p[0][1]) < bound):
+                        if math.acos(p[0][1]) < bound:
                             boundary = True
-                        if (math.acos(p[1][1]) < bound):
+                        if math.acos(p[1][1]) < bound:
                             boundary = True
 
             # Calculate distance to ceiling and floor
@@ -274,8 +297,7 @@ class Game:
                 else:
                     # Compute floor shading
                     # v_look changes where the floor starts rendering
-                    b = 1 - (y - self.v_look - SCREEN_HEIGHT / 2) \
-                             / (SCREEN_HEIGHT / 2)
+                    b = 1 - (y - self.v_look - SCREEN_HEIGHT / 2) / (SCREEN_HEIGHT / 2)
                     if b < 0.25:
                         shade = 14
                     elif b < 0.5:
@@ -299,7 +321,7 @@ class Game:
         if self.show_map:
             w = 2
             startx = 0
-            starty = SCREEN_HEIGHT-MAP_WIDTH*w
+            starty = SCREEN_HEIGHT - MAP_WIDTH * w
             for nx in range(MAP_HEIGHT):
                 for ny in range(MAP_WIDTH):
                     cell = self.world_map[ny][nx]
@@ -307,22 +329,10 @@ class Game:
                         col = 6
                     else:
                         col = 7
-                    pyxel.rect(
-                        nx * w + startx,
-                        ny * w + starty,
-                        nx * w + startx + 1,
-                        ny * w + starty + 1,
-                        col
-                    )
+                    pyxel.rect(w * nx + startx, w * ny + starty, w, w, col)
             px = int(self.player_x)
             py = int(self.player_y)
-            pyxel.rect(
-                px * w + startx,
-                py * w + starty,
-                px * w + startx + 1,
-                py * w + starty + 1,
-                12,
-            )
+            pyxel.rect(w * px + startx, w * py + starty, w, w, 12)
 
     def move_forward(self, speed, time_delta):
         new_x = self.player_x + math.sin(self.player_a) * speed * time_delta
@@ -339,48 +349,50 @@ class Game:
             self.player_y = new_y
 
     def move_left(self, speed, time_delta):
-        new_x = self.player_x + math.sin(self.player_a - math.pi/2) \
-                * speed * time_delta
-        new_y = self.player_y + math.cos(self.player_a - math.pi/2) \
-                * speed * time_delta
+        new_x = (
+            self.player_x + math.sin(self.player_a - math.pi / 2) * speed * time_delta
+        )
+        new_y = (
+            self.player_y + math.cos(self.player_a - math.pi / 2) * speed * time_delta
+        )
         if not self.check_collision(new_x, new_y):
             self.player_x = new_x
             self.player_y = new_y
 
     def move_right(self, speed, time_delta):
-        new_x = self.player_x + math.sin(self.player_a + math.pi/2) \
-                * speed * time_delta
-        new_y = self.player_y + math.cos(self.player_a + math.pi/2) \
-                * speed * time_delta
+        new_x = (
+            self.player_x + math.sin(self.player_a + math.pi / 2) * speed * time_delta
+        )
+        new_y = (
+            self.player_y + math.cos(self.player_a + math.pi / 2) * speed * time_delta
+        )
         if not self.check_collision(new_x, new_y):
             self.player_x = new_x
             self.player_y = new_y
 
     def check_collision(self, x, y):
-        return self.world_map[int(y)][int(x)] == '#'
+        return self.world_map[int(y)][int(x)] == "#"
 
     def capture_mouse(self):
-        glfw.set_input_mode(self.window, glfw.CURSOR, glfw.CURSOR_DISABLED)
+        SDL_SetRelativeMouseMode(1)
         self.mouse_captured = True
 
     def release_mouse(self):
-        glfw.set_input_mode(self.window, glfw.CURSOR, glfw.CURSOR_NORMAL)
+        SDL_SetRelativeMouseMode(0)
         self.mouse_captured = False
 
-    @property
-    def window(self):
-        return pyxel._app._window
-
-    def mouse_callback(self, window, xpos, ypos):
-        self.mouse_vec = [0, 0]
-        curr_pos = (xpos, ypos)
+    def update_mouse_pos(self):
+        xpos = c_int32(0)
+        ypos = c_int32(0)
+        SDL_GetRelativeMouseState(pointer(xpos), pointer(ypos))
+        delta = (xpos.value, ypos.value)
         self.mouse_vec = [
-            curr_pos[0] - self.last_mouse_pos[0],
-            curr_pos[1] - self.last_mouse_pos[1],
+            self.last_mouse_pos[0] + delta[0] / MOUSE_SPEED,
+            self.last_mouse_pos[1] + delta[1] / MOUSE_SPEED,
         ]
-        self.last_mouse_pos = curr_pos
+        self.last_mouse_pos = self.mouse_vec
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     game = Game()
     game.run()
