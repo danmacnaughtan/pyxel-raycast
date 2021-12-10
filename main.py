@@ -1,6 +1,6 @@
 import math
+from ctypes import POINTER, c_int32, c_uint32, pointer
 
-from ctypes import CFUNCTYPE, POINTER, c_int32, c_uint32, pointer
 import pyxel
 from pyxel.core import _lib
 
