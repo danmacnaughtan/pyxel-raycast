@@ -1,8 +1,6 @@
 import math
-from ctypes import POINTER, c_int32, c_uint32, pointer
 
 import pyxel
-from pyxel.core import _lib
 
 
 INTERLEAVE_RENDERING = True
@@ -12,8 +10,6 @@ SCREEN_HEIGHT = 136
 
 MAP_WIDTH = 16
 MAP_HEIGHT = 16
-
-MOUSE_SPEED = 4
 
 
 MAP_1 = """
@@ -36,36 +32,10 @@ MAP_1 = """
 """
 
 
-# ------------[ Exposing some C functions (SDL2) from Pyxel core ]-------------
-
-# Pyxel doesn't provide a way to track arbitrary mouse movement, but we can
-# access the C API to the underlying SDL2 framework and start using some
-# relative mouse functions...
-
-
-def _setup_api(name, restype, argtypes):
-    api = globals()[name] = getattr(_lib, name)
-    api.argtypes = argtypes
-    api.restype = restype
-
-
-_setup_api("SDL_SetRelativeMouseMode", c_int32, [c_int32])
-_setup_api("SDL_GetRelativeMouseState", c_uint32, [POINTER(c_int32), POINTER(c_int32)])
-
-# -----------------------------------------------------------------------------
-
-
 class Game:
     def __init__(self):
-        pyxel.init(
-            SCREEN_WIDTH,
-            SCREEN_HEIGHT,
-            caption="Raycasting in progress...",
-            scale=4,
-        )
+        pyxel.init(SCREEN_WIDTH, SCREEN_HEIGHT, "Raycasting in progress...")
 
-        # Track the initial application setup
-        self.has_setup = False
         # Player staring position and angle
         self.player_x = 7
         self.player_y = 12
@@ -83,10 +53,7 @@ class Game:
         self.tp2 = pyxel.frame_count
         self.interleave = INTERLEAVE_RENDERING
         self.render_alt = True
-        self.player_run = True
-        self.last_mouse_pos = (0, 0)
-        self.mouse_vec = [0, 0]
-        self.mouse_captured = False
+        self.player_run = False
         self.v_look = 0.1
         self.show_map = True
         self.show_boundries = True
@@ -94,19 +61,7 @@ class Game:
     def run(self):
         pyxel.run(self.update, self.draw)
 
-    def setup(self):
-        """
-        First time additional setup that needs to run after the app has been
-        initialized.
-        """
-        # We will start the game with the mouse captured
-        self.capture_mouse()
-        # Setup complete
-        self.has_setup = True
-
     def update(self):
-        if not self.has_setup:
-            self.setup()
 
         # Compute elapsed time
         self.tp2 = pyxel.frame_count
@@ -119,9 +74,9 @@ class Game:
 
         # Determine player speed
         if pyxel.btnp(pyxel.KEY_SHIFT):
-            self.player_run = False
-        if pyxel.btnr(pyxel.KEY_SHIFT):
             self.player_run = True
+        if pyxel.btnr(pyxel.KEY_SHIFT):
+            self.player_run = False
         if self.player_run:
             speed = self.speed
         else:
@@ -132,23 +87,13 @@ class Game:
         if pyxel.btn(pyxel.KEY_S):
             self.move_backward(speed, ellapsed_time)
         if pyxel.btn(pyxel.KEY_A):
-            if self.mouse_captured:
-                self.move_left(speed, ellapsed_time)
-            else:
-                self.player_a -= 0.05 * ellapsed_time
+            self.player_a -= 0.05 * ellapsed_time
         if pyxel.btn(pyxel.KEY_D):
-            if self.mouse_captured:
-                self.move_right(speed, ellapsed_time)
-            else:
-                self.player_a += 0.05 * ellapsed_time
-
-        if self.mouse_captured:
-            if self.mouse_vec[0] != 0:
-                self.player_a += self.mouse_vec[0] / 100 * ellapsed_time
-                self.mouse_vec[0] = 0
-            if self.mouse_vec[1] != 0:
-                self.v_look -= self.mouse_vec[1] * ellapsed_time
-                self.mouse_vec[1] = 0
+            self.player_a += 0.05 * ellapsed_time
+        if pyxel.btn(pyxel.KEY_Z):
+            self.move_left(speed, ellapsed_time)
+        if pyxel.btn(pyxel.KEY_C):
+            self.move_right(speed, ellapsed_time)
 
         if pyxel.btnp(pyxel.KEY_P):
             print(f"x: {self.player_x}, ", end="")
@@ -163,18 +108,13 @@ class Game:
             self.fov = 3.14159 / 4
         if pyxel.btnp(pyxel.KEY_4):
             self.interleave = not self.interleave
-        if pyxel.btnp(pyxel.KEY_5):
-            if self.mouse_captured:
-                self.release_mouse()
-            else:
-                self.capture_mouse()
-        if pyxel.btn(pyxel.KEY_6):
+        if pyxel.btn(pyxel.KEY_5):
             self.depth += 1
-        if pyxel.btn(pyxel.KEY_7):
+        if pyxel.btn(pyxel.KEY_6):
             self.depth -= 1
-        if pyxel.btn(pyxel.KEY_8):
+        if pyxel.btn(pyxel.KEY_7):
             self.depth = 16
-        if pyxel.btnp(pyxel.KEY_9):
+        if pyxel.btnp(pyxel.KEY_8):
             self.show_boundries = not self.show_boundries
 
         if pyxel.btn(pyxel.KEY_Q):
@@ -186,9 +126,6 @@ class Game:
 
         if pyxel.btnp(pyxel.KEY_M):
             self.show_map = not self.show_map
-
-        if self.mouse_captured:
-            self.update_mouse_pos()
 
     def draw(self):
         if self.interleave:
@@ -263,7 +200,7 @@ class Game:
             shade = 0
             for y in range(SCREEN_HEIGHT):
                 if y < ceiling:
-                    pyxel.image(1).set(x, y, 0)
+                    pyxel.image(1).pset(x, y, 0)
                 elif y > ceiling and y <= floor:
                     # Compute wall shading
                     if dist_to_wall <= self.depth / 7:
@@ -293,7 +230,7 @@ class Game:
                     # Can help orient the play, since we have no textures
                     if self.show_boundries and boundary:
                         shade = 0
-                    pyxel.image(1).set(x, y, shade)
+                    pyxel.image(1).pset(x, y, shade)
                 else:
                     # Compute floor shading
                     # v_look changes where the floor starts rendering
@@ -314,7 +251,7 @@ class Game:
                             shade = 0 if y % 2 else 2
                     else:
                         shade = 0
-                    pyxel.image(1).set(x, y, shade)
+                    pyxel.image(1).pset(x, y, shade)
         # Blt the screen from the image bank being used as the display buffer
         pyxel.blt(0, 0, 1, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
         # Draw map
@@ -372,25 +309,6 @@ class Game:
 
     def check_collision(self, x, y):
         return self.world_map[int(y)][int(x)] == "#"
-
-    def capture_mouse(self):
-        SDL_SetRelativeMouseMode(1)
-        self.mouse_captured = True
-
-    def release_mouse(self):
-        SDL_SetRelativeMouseMode(0)
-        self.mouse_captured = False
-
-    def update_mouse_pos(self):
-        xpos = c_int32(0)
-        ypos = c_int32(0)
-        SDL_GetRelativeMouseState(pointer(xpos), pointer(ypos))
-        delta = (xpos.value, ypos.value)
-        self.mouse_vec = [
-            self.last_mouse_pos[0] + delta[0] / MOUSE_SPEED,
-            self.last_mouse_pos[1] + delta[1] / MOUSE_SPEED,
-        ]
-        self.last_mouse_pos = self.mouse_vec
 
 
 if __name__ == "__main__":
